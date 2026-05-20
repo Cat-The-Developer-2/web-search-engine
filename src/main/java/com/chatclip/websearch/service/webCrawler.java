@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Optional;
 import com.chatclip.websearch.repository.urlRepository;
+import java.net.URL;
 
 
 @Service
@@ -79,6 +80,53 @@ public class webCrawler {
         return result;
     }
 
+    public List<String> getSitemapUrls(String url) {
+        List<String> siteUrl = new ArrayList<>();
+        try {
+             URL parsed = new URL(url);
+            String baseUrl = parsed.getProtocol() + "://" + parsed.getHost();
+
+            Document sietmap_got = Jsoup.connect(baseUrl + "/sitemap.xml").get();
+            Elements locs = sietmap_got.select("loc");
+
+            for (Element loc : locs) {
+                siteUrl.add(loc.text());
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        return siteUrl;
+    }
+
+    public boolean isAllowed(String url) {
+        
+        try {
+            URL parsed = new URL(url);
+            String baseUrl = parsed.getProtocol() + "://" + parsed.getHost();
+
+            Document data_got = Jsoup.connect(baseUrl + "/robots.txt").get();
+    
+            String robotsText = data_got.text();
+            String[] lines = robotsText.split("\n");
+    
+            for (String line : lines) {
+                if (line.startsWith("Disallow:")) {
+                    String path = line.replace("Disallow:", "").trim();
+                    if (!path.isEmpty() && url.contains(path)) {
+                        return false; // not allowed
+                    }
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            return true;
+        }
+
+    }
+
     public void startCrawl(String seedUrl) {
         HashSet<String> toVisit = new HashSet<>();
         HashSet<String> visited = new HashSet<>();
@@ -87,18 +135,26 @@ public class webCrawler {
 
         int maxPages = 50;
 
+        List<String> sitemapUrls = getSitemapUrls(seedUrl);
+
+        if (sitemapUrls != null) {toVisit.addAll(sitemapUrls);}
+
+
         while (!toVisit.isEmpty() && visited.size() < maxPages) {
             Iterator<String> visiting = toVisit.iterator();
             String currentUrl = visiting.next();   // actual url string
             visiting.remove();                     // remove from toVisit
             visited.add(currentUrl);              // add to visited
-            Models result = scrapeUrl(currentUrl);
-            List<String> links = getLinks(currentUrl);
 
-            if(links!= null) {  
-                for (String link : links) {
-                    if (!visited.contains(link) && !link.isEmpty() && !link.endsWith(".pdf") && !link.endsWith(".jpg") && !link.endsWith(".png")) {
-                        toVisit.add(link);
+            if (isAllowed(currentUrl)) {
+                Models result = scrapeUrl(currentUrl);
+                List<String> links = getLinks(currentUrl);
+    
+                if(links!= null) {  
+                    for (String link : links) {
+                        if (!visited.contains(link) && !link.isEmpty() && !link.endsWith(".pdf") && !link.endsWith(".jpg") && !link.endsWith(".png")) {
+                            toVisit.add(link);
+                        }
                     }
                 }
             }
